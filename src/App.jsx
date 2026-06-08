@@ -1,38 +1,42 @@
-﻿import { useState } from 'react'
-
-const CONTACTS = [
-  { id: 1, name: 'Мухамед', type: 'Друг', sphere: 'Завод металлоконструкций, дир. филиала', frequency: 'Активно', gives: 'Поставщик металлоконструкций', needs: 'Новые каналы сбыта', potential: 'Высокий', notes: 'Агентское соглашение' },
-  { id: 2, name: 'Жанель', type: 'Сестра', sphere: 'Проектировщик', frequency: 'Активно', gives: 'Закладывает поставщиков в смету', needs: '', potential: 'Высокий', notes: '' },
-  { id: 3, name: 'Жабай', type: 'Однокурсник МВА', sphere: 'Строительная компания, север Казахстана', frequency: 'Периодически', gives: 'Генподрядчик', needs: 'Надёжные поставщики', potential: 'Высокий', notes: '' },
-  { id: 4, name: 'Сергей Бобров', type: 'Друг', sphere: 'Дистрибьюторство спецтехники Magirus, высокий админрычаг', frequency: 'Активно', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 5, name: 'Марат Кокенов', type: 'Друг', sphere: 'Digital, телефония Novofon, медиапродакшн, грузоперевозки. Выход в Транстелеком на зампреда', frequency: 'Активно', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 6, name: 'Султан Сартаев', type: 'Друг', sphere: 'Сын генпрокурора, внук автора конституции РК. Сильный админресурс и финансы', frequency: 'Активно', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 7, name: 'Асан Ергалиев', type: 'Друг', sphere: 'PWC, Кулибаев. Антикризисный менеджер. Высокий админрычаг', frequency: 'Периодически', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 8, name: 'Юрий Тультаев', type: 'Друг', sphere: 'Партнёр Асана Ергалиева, инициативный', frequency: 'Активно', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 9, name: 'Мейржан Амиржанов', type: 'Друг', sphere: 'Forte Bank, Magnum, Sergek Group. Дата-анализ', frequency: 'Активно', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 10, name: 'Андрей Привальцев', type: 'Друг', sphere: 'Франшиза Этажи. Готов финансировать хорошие идеи', frequency: 'Активно', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 11, name: 'Нариман Куаншалиев', type: 'Друг', sphere: 'Директор Тойота. Сильный админрычаг, друг учредителей Orbis Kazakhstan', frequency: 'Активно', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 12, name: 'Айдар Кумаров', type: 'Дядя', sphere: 'Главный ревизор КТЖ. Высокий уровень админрычага', frequency: 'Редко', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 13, name: 'Женис Нуртасов', type: 'Друг', sphere: 'Закрытый поиск премиум недвижимости', frequency: 'Активно', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 14, name: 'Алмас', type: 'Друг', sphere: 'Chase Лондон. Финансы', frequency: 'Периодически', gives: '', needs: '', potential: 'Высокий', notes: '' },
-  { id: 15, name: 'Жубаныш Байбатыров', type: 'Друг', sphere: 'Советник ERG. Не работает с откатами', frequency: 'Активно', gives: '', needs: '', potential: 'Средний', notes: '' },
-  { id: 16, name: 'Куаныш Жанадилов', type: 'Коллега', sphere: 'Директор Мерседес центра, много связей', frequency: 'Периодически', gives: '', needs: '', potential: 'Средний', notes: '' },
-  { id: 17, name: 'Диас Акимов', type: 'Друг', sphere: 'Поставки запчастей из Китая, эксклюзивный поставщик дилеров', frequency: 'Периодически', gives: '', needs: '', potential: 'Средний', notes: '' },
-  { id: 18, name: 'Мансур', type: 'Друг', sphere: 'Частные джеты, послы и консулы', frequency: 'Периодически', gives: '', needs: '', potential: 'Низкий', notes: '' },
-]
+﻿import { useState, useEffect } from 'react'
+import { supabase } from './supabase'
 
 const potentialColor = { 'Высокий': '#16a34a', 'Средний': '#d97706', 'Низкий': '#6b7280' }
+const potentialOrder = { 'Высокий': 0, 'Средний': 1, 'Низкий': 2 }
 
 function App() {
+  const [contacts, setContacts] = useState([])
   const [problem, setProblem] = useState('')
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '' })
+
+  useEffect(() => { loadContacts() }, [])
+
+  const loadContacts = async () => {
+    const { data } = await supabase.from('contacts').select('*')
+    if (data) setContacts(data.sort((a, b) => potentialOrder[a.potential] - potentialOrder[b.potential]))
+  }
+
+  const addContact = async () => {
+    if (!form.name.trim()) return
+    await supabase.from('contacts').insert([form])
+    setForm({ name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '' })
+    setShowForm(false)
+    loadContacts()
+  }
+
+  const deleteContact = async (id) => {
+    await supabase.from('contacts').delete().eq('id', id)
+    loadContacts()
+  }
 
   const analyze = async () => {
-    if (!problem.trim()) return
+    if (!problem.trim() || contacts.length === 0) return
     setLoading(true)
     setResult('')
-    const contactsList = CONTACTS.map(c =>
+    const contactsList = contacts.map(c =>
       `- ${c.name} (${c.type}): ${c.sphere}. Общение: ${c.frequency}. Потенциал: ${c.potential}.${c.notes ? ' Заметка: ' + c.notes : ''}${c.gives ? ' Даёт: ' + c.gives : ''}${c.needs ? ' Нужно: ' + c.needs : ''}`
     ).join('\n')
     const prompt = `Ты помогаешь предпринимателю из Казахстана найти нужных людей в его сети.\n\nЗадача: ${problem}\n\nКонтакты:\n${contactsList}\n\nВыбери топ-3. Для каждого: почему он, как зайти, что сказать. Кратко, по делу, на русском.`
@@ -48,33 +52,107 @@ function App() {
     setLoading(false)
   }
 
+  const share = () => {
+    if (!result) return
+    const text = `Задача: ${problem}\n\n${result}`
+    if (navigator.share) {
+      navigator.share({ title: 'ProblemSolver', text })
+    } else {
+      navigator.clipboard.writeText(text)
+      alert('Скопировано в буфер обмена')
+    }
+  }
+
+  const inp = { width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #ddd', borderRadius: 8, boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 4 }
+  const label = { fontSize: 12, color: '#888', marginBottom: 2, display: 'block' }
+
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '20px 16px', fontFamily: '-apple-system, sans-serif' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>🧠 ProblemSolver</h1>
-      <p style={{ color: '#666', marginBottom: 20, fontSize: 14 }}>{CONTACTS.length} контактов · Опиши задачу</p>
+      <p style={{ color: '#666', marginBottom: 20, fontSize: 14 }}>{contacts.length} контактов · Опиши задачу</p>
+
       <textarea value={problem} onChange={e => setProblem(e.target.value)}
         placeholder="Например: Нужен инвестор для IT стартапа в Казахстане"
         style={{ width: '100%', height: 110, padding: 12, fontSize: 15, border: '1.5px solid #ddd', borderRadius: 10, resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+
       <button onClick={analyze} disabled={loading || !problem.trim()}
         style={{ width: '100%', padding: 14, fontSize: 16, fontWeight: 600, background: loading ? '#999' : '#111', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', marginTop: 10 }}>
         {loading ? '⏳ Анализирую...' : '🔍 Найти нужных людей'}
       </button>
-      {result && <div style={{ marginTop: 20, padding: 16, background: '#f8f8f8', borderRadius: 10, whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>{result}</div>}
-      <details style={{ marginTop: 30 }}>
-        <summary style={{ cursor: 'pointer', color: '#999', fontSize: 13 }}>Все контакты ({CONTACTS.length})</summary>
-        <div style={{ marginTop: 10 }}>
-          {CONTACTS.map(c => (
-            <div key={c.id} style={{ padding: '10px 12px', marginBottom: 8, border: '1px solid #eee', borderRadius: 8, fontSize: 13 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <strong>{c.name}</strong>
-                <span style={{ color: potentialColor[c.potential], fontSize: 12 }}>{c.potential}</span>
-              </div>
-              <div style={{ color: '#555', marginTop: 2 }}>{c.type} · {c.frequency}</div>
-              <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
-            </div>
-          ))}
+
+      {result && (
+        <div style={{ marginTop: 20, padding: 16, background: '#f8f8f8', borderRadius: 10 }}>
+          <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>{result}</div>
+          <button onClick={share} style={{ marginTop: 12, padding: '8px 16px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>
+            📤 Поделиться
+          </button>
         </div>
-      </details>
+      )}
+
+      <div style={{ marginTop: 30 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontSize: 13, color: '#999' }}>Контакты ({contacts.length})</span>
+          <button onClick={() => setShowForm(!showForm)}
+            style={{ padding: '6px 14px', fontSize: 13, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+            + Добавить
+          </button>
+        </div>
+
+        {showForm && (
+          <div style={{ padding: 16, border: '1px solid #eee', borderRadius: 10, marginBottom: 16 }}>
+            <label style={label}>Имя *</label>
+            <input placeholder="Иван Иванов" value={form.name} onChange={e => setForm({...form, name: e.target.value})} style={inp} />
+
+            <label style={label}>Тип отношений</label>
+            <input placeholder="Друг, Коллега, Клиент, Партнёр..." value={form.type} onChange={e => setForm({...form, type: e.target.value})} style={inp} />
+
+            <label style={label}>Должность / Чем занимается</label>
+            <input placeholder="CEO в TechCorp, занимается логистикой" value={form.sphere} onChange={e => setForm({...form, sphere: e.target.value})} style={inp} />
+
+            <label style={label}>Что может дать вам</label>
+            <input placeholder="Выход на инвесторов, экспертиза в праве..." value={form.gives} onChange={e => setForm({...form, gives: e.target.value})} style={inp} />
+
+            <label style={label}>Что ему может быть нужно</label>
+            <input placeholder="Новые клиенты, партнёры..." value={form.needs} onChange={e => setForm({...form, needs: e.target.value})} style={inp} />
+
+            <label style={label}>Заметки</label>
+            <input placeholder="Любая полезная информация" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} style={inp} />
+
+            <label style={label}>Частота общения</label>
+            <select value={form.frequency} onChange={e => setForm({...form, frequency: e.target.value})} style={{...inp, marginBottom: 8}}>
+              <option>Активно</option>
+              <option>Периодически</option>
+              <option>Редко</option>
+            </select>
+
+            <label style={label}>Потенциал контакта</label>
+            <select value={form.potential} onChange={e => setForm({...form, potential: e.target.value})} style={{...inp, marginBottom: 12}}>
+              <option>Высокий</option>
+              <option>Средний</option>
+              <option>Низкий</option>
+            </select>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={addContact} style={{ flex: 1, padding: 10, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>Сохранить</button>
+              <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: 10, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>Отмена</button>
+            </div>
+          </div>
+        )}
+
+        {contacts.map(c => (
+          <div key={c.id} style={{ padding: '10px 12px', marginBottom: 8, border: '1px solid #eee', borderRadius: 8, fontSize: 13 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>{c.name}</strong>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ color: potentialColor[c.potential], fontSize: 12 }}>● {c.potential}</span>
+                <span onClick={() => deleteContact(c.id)} style={{ cursor: 'pointer', color: '#ccc', fontSize: 16 }}>×</span>
+              </div>
+            </div>
+            <div style={{ color: '#555', marginTop: 2 }}>{c.type} · {c.frequency}</div>
+            <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
