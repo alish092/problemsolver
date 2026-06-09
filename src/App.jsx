@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { supabase } from './supabase'
+import { supabase, getAllContacts } from './supabase'
 
 const potentialColor = { 'Высокий': '#16a34a', 'Средний': '#d97706', 'Низкий': '#6b7280' }
 const potentialOrder = { 'Высокий': 0, 'Средний': 1, 'Низкий': 2 }
@@ -57,7 +57,7 @@ function App() {
   useEffect(() => { loadContacts() }, [])
 
   const loadContacts = async () => {
-    const { data } = await supabase.from('contacts').select('*')
+    const data = await getAllContacts()
     if (data) setContacts(data.sort((a, b) => potentialOrder[a.potential] - potentialOrder[b.potential]))
   }
 
