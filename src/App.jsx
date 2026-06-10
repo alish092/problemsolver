@@ -205,8 +205,11 @@ function App() {
           body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], max_tokens: 2000 })
         })
         const data = await response.json()
+        console.log('GPT response:', JSON.stringify(data))
         const text = data.choices[0].message.content.replace(/```json|```/g, '').trim()
+        console.log('Parsed text:', text)
         const results = JSON.parse(text)
+        console.log('Results:', results)
         for (const r of results) {
           if (r.tags && r.tags.length > 0) {
             await supabase.from('contacts').update({ tags: r.tags }).eq('id', r.id)
