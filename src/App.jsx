@@ -28,18 +28,49 @@ function parseVcf(text) {
     const org = getOrg()
     const title = getTitle()
     const sphere = [title, org].filter(Boolean).join(', ')
-    contacts.push({
-      name,
-      type: '',
-      sphere,
-      frequency: 'Редко',
-      potential: sphere ? 'Средний' : 'Низкий',
-      notes: '',
-      gives: '',
-      needs: ''
-    })
+    contacts.push({ name, type: '', sphere, frequency: 'Редко', potential: sphere ? 'Средний' : 'Низкий', notes: '', gives: '', needs: '' })
   }
   return contacts
+}
+
+const emptyForm = { name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '' }
+
+function ContactForm({ form, setForm, onSave, onCancel, title }) {
+  const inp = { width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #ddd', borderRadius: 8, boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 4 }
+  const label = { fontSize: 12, color: '#888', marginBottom: 2, display: 'block' }
+  return (
+    <div style={{ padding: 16, border: '1px solid #eee', borderRadius: 10, marginBottom: 16 }}>
+      <strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>{title}</strong>
+      <label style={label}>Имя *</label>
+      <input placeholder="Иван Иванов" value={form.name} onChange={e => setForm({...form, name: e.target.value})} style={inp} />
+      <label style={label}>Тип отношений</label>
+      <input placeholder="Друг, Коллега, Клиент, Партнёр..." value={form.type} onChange={e => setForm({...form, type: e.target.value})} style={inp} />
+      <label style={label}>Должность / Чем занимается</label>
+      <input placeholder="CEO в TechCorp, занимается логистикой" value={form.sphere} onChange={e => setForm({...form, sphere: e.target.value})} style={inp} />
+      <label style={label}>Что может дать вам</label>
+      <input placeholder="Выход на инвесторов, экспертиза в праве..." value={form.gives} onChange={e => setForm({...form, gives: e.target.value})} style={inp} />
+      <label style={label}>Что ему может быть нужно</label>
+      <input placeholder="Новые клиенты, партнёры..." value={form.needs} onChange={e => setForm({...form, needs: e.target.value})} style={inp} />
+      <label style={label}>Заметки</label>
+      <input placeholder="Любая полезная информация" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} style={inp} />
+      <label style={label}>Частота общения</label>
+      <select value={form.frequency} onChange={e => setForm({...form, frequency: e.target.value})} style={{...inp, marginBottom: 8}}>
+        <option>Активно</option>
+        <option>Периодически</option>
+        <option>Редко</option>
+      </select>
+      <label style={label}>Потенциал контакта</label>
+      <select value={form.potential} onChange={e => setForm({...form, potential: e.target.value})} style={{...inp, marginBottom: 12}}>
+        <option>Высокий</option>
+        <option>Средний</option>
+        <option>Низкий</option>
+      </select>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={onSave} style={{ flex: 1, padding: 10, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>Сохранить</button>
+        <button onClick={onCancel} style={{ flex: 1, padding: 10, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>Отмена</button>
+      </div>
+    </div>
+  )
 }
 
 function App() {
@@ -49,9 +80,11 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [editContact, setEditContact] = useState(null)
   const [search, setSearch] = useState('')
   const [filterPotential, setFilterPotential] = useState('Все')
-  const [form, setForm] = useState({ name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '' })
+  const [form, setForm] = useState(emptyForm)
+  const [editForm, setEditForm] = useState(emptyForm)
   const fileRef = useRef()
 
   useEffect(() => { loadContacts() }, [])
@@ -80,14 +113,26 @@ function App() {
   const addContact = async () => {
     if (!form.name.trim()) return
     await supabase.from('contacts').insert([form])
-    setForm({ name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '' })
+    setForm(emptyForm)
     setShowForm(false)
+    loadContacts()
+  }
+
+  const saveEdit = async () => {
+    if (!editForm.name.trim()) return
+    await supabase.from('contacts').update(editForm).eq('id', editContact.id)
+    setEditContact(null)
     loadContacts()
   }
 
   const deleteContact = async (id) => {
     await supabase.from('contacts').delete().eq('id', id)
     loadContacts()
+  }
+
+  const startEdit = (c) => {
+    setEditContact(c)
+    setEditForm({ name: c.name, type: c.type || '', sphere: c.sphere || '', frequency: c.frequency || 'Периодически', potential: c.potential || 'Средний', notes: c.notes || '', gives: c.gives || '', needs: c.needs || '' })
   }
 
   const filteredContacts = contacts
@@ -131,9 +176,6 @@ function App() {
     }
   }
 
-  const inp = { width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #ddd', borderRadius: 8, boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 4 }
-  const label = { fontSize: 12, color: '#888', marginBottom: 2, display: 'block' }
-
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '20px 16px', fontFamily: '-apple-system, sans-serif' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>🧠 ProblemSolver</h1>
@@ -163,7 +205,7 @@ function App() {
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => fileRef.current.click()} disabled={importing}
               style={{ padding: '6px 14px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>
-              {importing ? '⏳ Импорт...' : '📥 Импорт vcf'}
+              {importing ? '⏳' : '📥'} Импорт
             </button>
             <button onClick={() => setShowForm(!showForm)}
               style={{ padding: '6px 14px', fontSize: 13, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
@@ -187,50 +229,26 @@ function App() {
           ))}
         </div>
 
-        {showForm && (
-          <div style={{ padding: 16, border: '1px solid #eee', borderRadius: 10, marginBottom: 16 }}>
-            <label style={label}>Имя *</label>
-            <input placeholder="Иван Иванов" value={form.name} onChange={e => setForm({...form, name: e.target.value})} style={inp} />
-            <label style={label}>Тип отношений</label>
-            <input placeholder="Друг, Коллега, Клиент, Партнёр..." value={form.type} onChange={e => setForm({...form, type: e.target.value})} style={inp} />
-            <label style={label}>Должность / Чем занимается</label>
-            <input placeholder="CEO в TechCorp, занимается логистикой" value={form.sphere} onChange={e => setForm({...form, sphere: e.target.value})} style={inp} />
-            <label style={label}>Что может дать вам</label>
-            <input placeholder="Выход на инвесторов, экспертиза в праве..." value={form.gives} onChange={e => setForm({...form, gives: e.target.value})} style={inp} />
-            <label style={label}>Что ему может быть нужно</label>
-            <input placeholder="Новые клиенты, партнёры..." value={form.needs} onChange={e => setForm({...form, needs: e.target.value})} style={inp} />
-            <label style={label}>Заметки</label>
-            <input placeholder="Любая полезная информация" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} style={inp} />
-            <label style={label}>Частота общения</label>
-            <select value={form.frequency} onChange={e => setForm({...form, frequency: e.target.value})} style={{...inp, marginBottom: 8}}>
-              <option>Активно</option>
-              <option>Периодически</option>
-              <option>Редко</option>
-            </select>
-            <label style={label}>Потенциал контакта</label>
-            <select value={form.potential} onChange={e => setForm({...form, potential: e.target.value})} style={{...inp, marginBottom: 12}}>
-              <option>Высокий</option>
-              <option>Средний</option>
-              <option>Низкий</option>
-            </select>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={addContact} style={{ flex: 1, padding: 10, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>Сохранить</button>
-              <button onClick={() => setShowForm(false)} style={{ flex: 1, padding: 10, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>Отмена</button>
-            </div>
-          </div>
-        )}
+        {showForm && <ContactForm form={form} setForm={setForm} onSave={addContact} onCancel={() => setShowForm(false)} title="Новый контакт" />}
 
         {filteredContacts.map(c => (
-          <div key={c.id} style={{ padding: '10px 12px', marginBottom: 8, border: '1px solid #eee', borderRadius: 8, fontSize: 13 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong>{c.name}</strong>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ color: potentialColor[c.potential], fontSize: 12 }}>● {c.potential}</span>
-                <span onClick={() => deleteContact(c.id)} style={{ cursor: 'pointer', color: '#ccc', fontSize: 16 }}>×</span>
+          <div key={c.id}>
+            {editContact?.id === c.id ? (
+              <ContactForm form={editForm} setForm={setEditForm} onSave={saveEdit} onCancel={() => setEditContact(null)} title="Редактировать контакт" />
+            ) : (
+              <div style={{ padding: '10px 12px', marginBottom: 8, border: '1px solid #eee', borderRadius: 8, fontSize: 13 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong>{c.name}</strong>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <span style={{ color: potentialColor[c.potential], fontSize: 12 }}>● {c.potential}</span>
+                    <span onClick={() => startEdit(c)} style={{ cursor: 'pointer', color: '#aaa', fontSize: 13 }}>✏️</span>
+                    <span onClick={() => deleteContact(c.id)} style={{ cursor: 'pointer', color: '#ccc', fontSize: 16 }}>×</span>
+                  </div>
+                </div>
+                <div style={{ color: '#555', marginTop: 2 }}>{c.type} · {c.frequency}</div>
+                <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
               </div>
-            </div>
-            <div style={{ color: '#555', marginTop: 2 }}>{c.type} · {c.frequency}</div>
-            <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
+            )}
           </div>
         ))}
 
