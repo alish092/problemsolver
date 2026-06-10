@@ -188,7 +188,7 @@ function App() {
   }
 
   const autoTag = async () => {
-    const toTag = contacts.filter(c => (!c.tags || c.tags.length === 0) && c.sphere)
+    const toTag = contacts.filter(c => c.sphere)
     if (toTag.length === 0) { alert('Нет контактов без тэгов (или без сферы)'); return }
     setTagging(true)
     const batchSize = 50
