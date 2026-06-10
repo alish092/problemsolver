@@ -4,6 +4,8 @@ import { supabase, getAllContacts } from './supabase'
 const potentialColor = { 'Высокий': '#16a34a', 'Средний': '#d97706', 'Низкий': '#6b7280' }
 const potentialOrder = { 'Высокий': 0, 'Средний': 1, 'Низкий': 2 }
 
+const PRESET_TAGS = ['IT', 'Финансы', 'Строительство', 'Госсектор', 'Медиа', 'Недвижимость', 'Логистика', 'Авто', 'Инвестор', 'Юрист', 'Госсвязи']
+
 function parseVcf(text) {
   const contacts = []
   const cards = text.split(/BEGIN:VCARD/i).filter(c => c.trim())
@@ -28,12 +30,49 @@ function parseVcf(text) {
     const org = getOrg()
     const title = getTitle()
     const sphere = [title, org].filter(Boolean).join(', ')
-    contacts.push({ name, type: '', sphere, frequency: 'Редко', potential: sphere ? 'Средний' : 'Низкий', notes: '', gives: '', needs: '' })
+    contacts.push({ name, type: '', sphere, frequency: 'Редко', potential: sphere ? 'Средний' : 'Низкий', notes: '', gives: '', needs: '', tags: [] })
   }
   return contacts
 }
 
-const emptyForm = { name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '' }
+const emptyForm = { name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '', tags: [] }
+
+function TagInput({ tags, setTags }) {
+  const [input, setInput] = useState('')
+  const add = (tag) => {
+    const t = tag.trim()
+    if (t && !tags.includes(t)) setTags([...tags, t])
+    setInput('')
+  }
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+        {PRESET_TAGS.map(t => (
+          <span key={t} onClick={() => add(t)}
+            style={{ padding: '3px 8px', fontSize: 11, borderRadius: 12, cursor: 'pointer', background: tags.includes(t) ? '#111' : '#f0f0f0', color: tags.includes(t) ? '#fff' : '#555' }}>
+            {t}
+          </span>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && add(input)}
+          placeholder="Свой тэг + Enter"
+          style={{ flex: 1, padding: '6px 10px', fontSize: 13, border: '1px solid #ddd', borderRadius: 8, fontFamily: 'inherit' }} />
+      </div>
+      {tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {tags.map(t => (
+            <span key={t} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 12, background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {t}
+              <span onClick={() => setTags(tags.filter(x => x !== t))} style={{ cursor: 'pointer', opacity: 0.6 }}>×</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function ContactForm({ form, setForm, onSave, onCancel, title }) {
   const inp = { width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #ddd', borderRadius: 8, boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 4 }
@@ -60,12 +99,14 @@ function ContactForm({ form, setForm, onSave, onCancel, title }) {
         <option>Редко</option>
       </select>
       <label style={label}>Потенциал контакта</label>
-      <select value={form.potential} onChange={e => setForm({...form, potential: e.target.value})} style={{...inp, marginBottom: 12}}>
+      <select value={form.potential} onChange={e => setForm({...form, potential: e.target.value})} style={{...inp, marginBottom: 8}}>
         <option>Высокий</option>
         <option>Средний</option>
         <option>Низкий</option>
       </select>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <label style={label}>Тэги</label>
+      <TagInput tags={form.tags || []} setTags={t => setForm({...form, tags: t})} />
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <button onClick={onSave} style={{ flex: 1, padding: 10, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>Сохранить</button>
         <button onClick={onCancel} style={{ flex: 1, padding: 10, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>Отмена</button>
       </div>
@@ -83,6 +124,7 @@ function App() {
   const [editContact, setEditContact] = useState(null)
   const [search, setSearch] = useState('')
   const [filterPotential, setFilterPotential] = useState('Все')
+  const [filterTag, setFilterTag] = useState('')
   const [form, setForm] = useState(emptyForm)
   const [editForm, setEditForm] = useState(emptyForm)
   const fileRef = useRef()
@@ -132,27 +174,48 @@ function App() {
 
   const startEdit = (c) => {
     setEditContact(c)
-    setEditForm({ name: c.name, type: c.type || '', sphere: c.sphere || '', frequency: c.frequency || 'Периодически', potential: c.potential || 'Средний', notes: c.notes || '', gives: c.gives || '', needs: c.needs || '' })
+    setEditForm({ name: c.name, type: c.type || '', sphere: c.sphere || '', frequency: c.frequency || 'Периодически', potential: c.potential || 'Средний', notes: c.notes || '', gives: c.gives || '', needs: c.needs || '', tags: c.tags || [] })
   }
+
+  const allTags = [...new Set(contacts.flatMap(c => c.tags || []))].sort()
 
   const filteredContacts = contacts
     .filter(c => filterPotential === 'Все' || c.potential === filterPotential)
+    .filter(c => !filterTag || (c.tags || []).includes(filterTag))
     .filter(c => {
       const q = search.toLowerCase()
       return !q || c.name?.toLowerCase().includes(q) || c.sphere?.toLowerCase().includes(q) || c.type?.toLowerCase().includes(q)
     })
 
+  const scoreContact = (c, problem) => {
+    const p = problem.toLowerCase()
+    let score = 0
+    if (c.potential === 'Высокий') score += 40
+    else if (c.potential === 'Средний') score += 20
+    if (c.frequency === 'Активно') score += 20
+    else if (c.frequency === 'Периодически') score += 10
+    const fields = [c.sphere, c.gives, c.notes, c.tags?.join(' ')].join(' ').toLowerCase()
+    const words = p.split(' ').filter(w => w.length > 3)
+    words.forEach(w => { if (fields.includes(w)) score += 15 })
+    return score
+  }
+
   const analyze = async () => {
     if (!problem.trim() || contacts.length === 0) return
     setLoading(true)
     setResult('')
-    const top = contacts.filter(c => c.potential === 'Высокий').slice(0, 100)
-    const rest = contacts.filter(c => c.potential !== 'Высокий').slice(0, 50)
-    const pool = [...top, ...rest]
-    const contactsList = pool.map(c =>
-      `- ${c.name} (${c.type}): ${c.sphere}. Общение: ${c.frequency}. Потенциал: ${c.potential}.${c.notes ? ' Заметка: ' + c.notes : ''}${c.gives ? ' Даёт: ' + c.gives : ''}${c.needs ? ' Нужно: ' + c.needs : ''}`
+
+    const scored = contacts
+      .map(c => ({ ...c, score: scoreContact(c, problem) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 80)
+
+    const contactsList = scored.map(c =>
+      `- ${c.name} (${c.type}): ${c.sphere}. Общение: ${c.frequency}. Потенциал: ${c.potential}. Score: ${c.score}.${c.tags?.length ? ' Тэги: ' + c.tags.join(', ') : ''}${c.notes ? ' Заметка: ' + c.notes : ''}${c.gives ? ' Даёт: ' + c.gives : ''}`
     ).join('\n')
-    const prompt = `Ты помогаешь предпринимателю из Казахстана найти нужных людей в его сети.\n\nЗадача: ${problem}\n\nКонтакты:\n${contactsList}\n\nВыбери топ-3. Для каждого: почему он, как зайти, что сказать. Кратко, по делу, на русском.`
+
+    const prompt = `Ты помогаешь предпринимателю из Казахстана найти нужных людей в его сети. Контакты уже отсортированы по релевантности (Score).\n\nЗадача: ${problem}\n\nКонтакты:\n${contactsList}\n\nВыбери топ-3. Для каждого: почему он, как зайти, что сказать. Кратко, по делу, на русском.`
+
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -168,12 +231,8 @@ function App() {
   const share = () => {
     if (!result) return
     const text = `Задача: ${problem}\n\n${result}`
-    if (navigator.share) {
-      navigator.share({ title: 'ProblemSolver', text })
-    } else {
-      navigator.clipboard.writeText(text)
-      alert('Скопировано в буфер обмена')
-    }
+    if (navigator.share) navigator.share({ title: 'ProblemSolver', text })
+    else { navigator.clipboard.writeText(text); alert('Скопировано') }
   }
 
   return (
@@ -193,9 +252,7 @@ function App() {
       {result && (
         <div style={{ marginTop: 20, padding: 16, background: '#f8f8f8', borderRadius: 10 }}>
           <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>{result}</div>
-          <button onClick={share} style={{ marginTop: 12, padding: '8px 16px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>
-            📤 Поделиться
-          </button>
+          <button onClick={share} style={{ marginTop: 12, padding: '8px 16px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>📤 Поделиться</button>
         </div>
       )}
 
@@ -220,7 +277,7 @@ function App() {
           placeholder="🔎 Поиск по имени, компании, сфере..."
           style={{ width: '100%', padding: '9px 12px', fontSize: 14, border: '1px solid #ddd', borderRadius: 8, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }} />
 
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
           {['Все', 'Высокий', 'Средний', 'Низкий'].map(p => (
             <button key={p} onClick={() => setFilterPotential(p)}
               style={{ padding: '5px 12px', fontSize: 12, borderRadius: 20, border: '1px solid #ddd', cursor: 'pointer', background: filterPotential === p ? '#111' : '#fff', color: filterPotential === p ? '#fff' : '#333' }}>
@@ -228,6 +285,21 @@ function App() {
             </button>
           ))}
         </div>
+
+        {allTags.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+            <span onClick={() => setFilterTag('')}
+              style={{ padding: '4px 10px', fontSize: 11, borderRadius: 12, cursor: 'pointer', background: !filterTag ? '#111' : '#f0f0f0', color: !filterTag ? '#fff' : '#555' }}>
+              Все тэги
+            </span>
+            {allTags.map(t => (
+              <span key={t} onClick={() => setFilterTag(t === filterTag ? '' : t)}
+                style={{ padding: '4px 10px', fontSize: 11, borderRadius: 12, cursor: 'pointer', background: filterTag === t ? '#111' : '#f0f0f0', color: filterTag === t ? '#fff' : '#555' }}>
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
 
         {showForm && <ContactForm form={form} setForm={setForm} onSave={addContact} onCancel={() => setShowForm(false)} title="Новый контакт" />}
 
@@ -247,6 +319,13 @@ function App() {
                 </div>
                 <div style={{ color: '#555', marginTop: 2 }}>{c.type} · {c.frequency}</div>
                 <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
+                {c.tags?.length > 0 && (
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                    {c.tags.map(t => (
+                      <span key={t} style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, background: '#f0f0f0', color: '#555' }}>{t}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
