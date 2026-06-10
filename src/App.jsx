@@ -4,6 +4,8 @@ import { supabase, getAllContacts } from './supabase'
 const potentialColor = { 'Высокий': '#16a34a', 'Средний': '#d97706', 'Низкий': '#6b7280' }
 const potentialOrder = { 'Высокий': 0, 'Средний': 1, 'Низкий': 2 }
 const PRESET_TAGS = ['IT', 'Финансы', 'Строительство', 'Госсектор', 'Медиа', 'Недвижимость', 'Логистика', 'Авто', 'Инвестор', 'Юрист', 'Госсвязи']
+const STATUSES = ['Не задан', 'Надо связаться', 'В работе', 'Связался', 'Не актуален']
+const statusColor = { 'Не задан': '#ccc', 'Надо связаться': '#ef4444', 'В работе': '#f59e0b', 'Связался': '#16a34a', 'Не актуален': '#9ca3af' }
 
 function parseVcf(text) {
   const contacts = []
@@ -21,12 +23,12 @@ function parseVcf(text) {
     const org = card.match(/ORG[^:]*:(.+)/i)?.[1]?.replace(/;/g, ' ').trim() || ''
     const title = card.match(/TITLE[^:]*:(.+)/i)?.[1]?.trim() || ''
     const sphere = [title, org].filter(Boolean).join(', ')
-    contacts.push({ name, type: '', sphere, frequency: 'Редко', potential: sphere ? 'Средний' : 'Низкий', notes: '', gives: '', needs: '', tags: [] })
+    contacts.push({ name, type: '', sphere, frequency: 'Редко', potential: sphere ? 'Средний' : 'Низкий', notes: '', gives: '', needs: '', tags: [], status: 'Не задан' })
   }
   return contacts
 }
 
-const emptyForm = { name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '', tags: [] }
+const emptyForm = { name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '', tags: [], status: 'Не задан' }
 
 function TagInput({ tags, setTags }) {
   const [input, setInput] = useState('')
@@ -80,6 +82,10 @@ function ContactForm({ form, setForm, onSave, onCancel, title }) {
       <select value={form.potential} onChange={e => setForm({...form, potential: e.target.value})} style={{...inp, marginBottom: 8}}>
         <option>Высокий</option><option>Средний</option><option>Низкий</option>
       </select>
+      <label style={label}>Статус</label>
+      <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} style={{...inp, marginBottom: 8}}>
+        {STATUSES.map(s => <option key={s}>{s}</option>)}
+      </select>
       <label style={label}>Тэги</label>
       <TagInput tags={form.tags || []} setTags={t => setForm({...form, tags: t})} />
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -95,21 +101,16 @@ function RelationshipForm({ contactId, contacts, onSave, onClose }) {
   const [strength, setStrength] = useState(3)
   const [notes, setNotes] = useState('')
   const [search, setSearch] = useState('')
-
   const filtered = contacts.filter(c => c.id !== contactId && c.name.toLowerCase().includes(search.toLowerCase())).slice(0, 20)
-
   const save = async () => {
     if (!toId) return
     await supabase.from('relationships').insert([{ contact_from: contactId, contact_to: toId, strength, notes }])
-    onSave()
-    onClose()
+    onSave(); onClose()
   }
-
   return (
     <div style={{ padding: 16, background: '#f8f8f8', borderRadius: 10, marginTop: 8 }}>
       <strong style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>Добавить связь</strong>
-      <input value={search} onChange={e => { setSearch(e.target.value); setToId('') }}
-        placeholder="Найти контакт..."
+      <input value={search} onChange={e => { setSearch(e.target.value); setToId('') }} placeholder="Найти контакт..."
         style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #ddd', borderRadius: 8, boxSizing: 'border-box', marginBottom: 6, fontFamily: 'inherit' }} />
       {search && (
         <div style={{ border: '1px solid #eee', borderRadius: 8, marginBottom: 8, maxHeight: 150, overflowY: 'auto' }}>
@@ -123,8 +124,7 @@ function RelationshipForm({ contactId, contacts, onSave, onClose }) {
       )}
       <div style={{ marginBottom: 8 }}>
         <span style={{ fontSize: 12, color: '#888' }}>Сила связи: {strength}/5</span>
-        <input type="range" min="1" max="5" value={strength} onChange={e => setStrength(+e.target.value)}
-          style={{ width: '100%', marginTop: 4 }} />
+        <input type="range" min="1" max="5" value={strength} onChange={e => setStrength(+e.target.value)} style={{ width: '100%', marginTop: 4 }} />
       </div>
       <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Заметка о связи"
         style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1px solid #ddd', borderRadius: 8, boxSizing: 'border-box', marginBottom: 8, fontFamily: 'inherit' }} />
@@ -150,6 +150,7 @@ function App() {
   const [search, setSearch] = useState('')
   const [filterPotential, setFilterPotential] = useState('Все')
   const [filterTag, setFilterTag] = useState('')
+  const [filterStatus, setFilterStatus] = useState('Все')
   const [form, setForm] = useState(emptyForm)
   const [editForm, setEditForm] = useState(emptyForm)
   const fileRef = useRef()
@@ -193,6 +194,11 @@ function App() {
     setEditContact(null); loadContacts()
   }
 
+  const updateStatus = async (id, status) => {
+    await supabase.from('contacts').update({ status }).eq('id', id)
+    setContacts(prev => prev.map(c => c.id === id ? { ...c, status } : c))
+  }
+
   const deleteContact = async (id) => {
     await supabase.from('contacts').delete().eq('id', id)
     loadContacts()
@@ -205,12 +211,11 @@ function App() {
 
   const startEdit = (c) => {
     setEditContact(c)
-    setEditForm({ name: c.name, type: c.type || '', sphere: c.sphere || '', frequency: c.frequency || 'Периодически', potential: c.potential || 'Средний', notes: c.notes || '', gives: c.gives || '', needs: c.needs || '', tags: c.tags || [] })
+    setEditForm({ name: c.name, type: c.type || '', sphere: c.sphere || '', frequency: c.frequency || 'Периодически', potential: c.potential || 'Средний', notes: c.notes || '', gives: c.gives || '', needs: c.needs || '', tags: c.tags || [], status: c.status || 'Не задан' })
   }
 
   const getContactRels = (id) => {
-    const rels = relationships.filter(r => r.contact_from === id || r.contact_to === id)
-    return rels.map(r => {
+    return relationships.filter(r => r.contact_from === id || r.contact_to === id).map(r => {
       const otherId = r.contact_from === id ? r.contact_to : r.contact_from
       const other = contacts.find(c => c.id === otherId)
       return { ...r, other }
@@ -263,6 +268,7 @@ function App() {
   const allTags = [...new Set(contacts.flatMap(c => c.tags || []))].sort()
   const filteredContacts = contacts
     .filter(c => filterPotential === 'Все' || c.potential === filterPotential)
+    .filter(c => filterStatus === 'Все' || c.status === filterStatus)
     .filter(c => !filterTag || (c.tags || []).includes(filterTag))
     .filter(c => { const q = search.toLowerCase(); return !q || c.name?.toLowerCase().includes(q) || c.sphere?.toLowerCase().includes(q) || c.type?.toLowerCase().includes(q) })
 
@@ -317,6 +323,15 @@ function App() {
           ))}
         </div>
 
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+          {['Все', ...STATUSES].map(s => (
+            <button key={s} onClick={() => setFilterStatus(s)}
+              style={{ padding: '5px 12px', fontSize: 12, borderRadius: 20, border: '1px solid #ddd', cursor: 'pointer', background: filterStatus === s ? '#111' : '#fff', color: filterStatus === s ? '#fff' : '#333' }}>
+              {s}
+            </button>
+          ))}
+        </div>
+
         {allTags.length > 0 && (
           <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
             <span onClick={() => setFilterTag('')} style={{ padding: '4px 10px', fontSize: 11, borderRadius: 12, cursor: 'pointer', background: !filterTag ? '#111' : '#f0f0f0', color: !filterTag ? '#fff' : '#555' }}>Все тэги</span>
@@ -345,22 +360,30 @@ function App() {
                       <strong style={{ cursor: 'pointer' }} onClick={() => setExpandedContact(isExpanded ? null : c.id)}>{c.name}</strong>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                         <span style={{ color: potentialColor[c.potential], fontSize: 12 }}>● {c.potential}</span>
-                        <span onClick={() => setShowRelForm(showRelForm === c.id ? null : c.id)} style={{ cursor: 'pointer', fontSize: 13 }} title="Добавить связь">🔗</span>
+                        <span onClick={() => setShowRelForm(showRelForm === c.id ? null : c.id)} style={{ cursor: 'pointer', fontSize: 13 }}>🔗</span>
                         <span onClick={() => startEdit(c)} style={{ cursor: 'pointer', color: '#aaa', fontSize: 13 }}>✏️</span>
                         <span onClick={() => deleteContact(c.id)} style={{ cursor: 'pointer', color: '#ccc', fontSize: 16 }}>×</span>
                       </div>
                     </div>
                     <div style={{ color: '#555', marginTop: 2 }}>{c.type} · {c.frequency}</div>
                     <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
+
+                    <div style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {STATUSES.map(s => (
+                        <span key={s} onClick={() => updateStatus(c.id, s)}
+                          style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, cursor: 'pointer', background: c.status === s ? statusColor[s] : '#f0f0f0', color: c.status === s ? '#fff' : '#888' }}>
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+
                     {c.tags?.length > 0 && (
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
                         {c.tags.map(t => <span key={t} style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, background: '#f0f0f0', color: '#555' }}>{t}</span>)}
                       </div>
                     )}
                     {rels.length > 0 && (
-                      <div style={{ marginTop: 6, fontSize: 12, color: '#888' }}>
-                        🔗 {rels.map(r => r.other.name).join(', ')}
-                      </div>
+                      <div style={{ marginTop: 6, fontSize: 12, color: '#888' }}>🔗 {rels.map(r => r.other.name).join(', ')}</div>
                     )}
                   </div>
 
