@@ -23,12 +23,12 @@ function parseVcf(text) {
     const org = card.match(/ORG[^:]*:(.+)/i)?.[1]?.replace(/;/g, ' ').trim() || ''
     const title = card.match(/TITLE[^:]*:(.+)/i)?.[1]?.trim() || ''
     const sphere = [title, org].filter(Boolean).join(', ')
-    contacts.push({ name, type: '', sphere, frequency: 'Редко', potential: sphere ? 'Средний' : 'Низкий', notes: '', gives: '', needs: '', tags: [], status: 'Не задан' })
+    contacts.push({ name, type: '', sphere, frequency: 'Редко', potential: sphere ? 'Средний' : 'Низкий', notes: '', gives: '', needs: '', tags: [], status: 'Не задан', reminder_date: null })
   }
   return contacts
 }
 
-const emptyForm = { name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '', tags: [], status: 'Не задан' }
+const emptyForm = { name: '', type: '', sphere: '', frequency: 'Периодически', potential: 'Средний', notes: '', gives: '', needs: '', tags: [], status: 'Не задан', reminder_date: '' }
 
 function TagInput({ tags, setTags }) {
   const [input, setInput] = useState('')
@@ -86,6 +86,8 @@ function ContactForm({ form, setForm, onSave, onCancel, title }) {
       <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} style={{...inp, marginBottom: 8}}>
         {STATUSES.map(s => <option key={s}>{s}</option>)}
       </select>
+      <label style={label}>Напоминание (дата)</label>
+      <input type="date" value={form.reminder_date || ''} onChange={e => setForm({...form, reminder_date: e.target.value || null})} style={{...inp, marginBottom: 8}} />
       <label style={label}>Тэги</label>
       <TagInput tags={form.tags || []} setTags={t => setForm({...form, tags: t})} />
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -151,6 +153,7 @@ function App() {
   const [filterPotential, setFilterPotential] = useState('Все')
   const [filterTag, setFilterTag] = useState('')
   const [filterStatus, setFilterStatus] = useState('Все')
+  const [activeTab, setActiveTab] = useState('contacts')
   const [form, setForm] = useState(emptyForm)
   const [editForm, setEditForm] = useState(emptyForm)
   const fileRef = useRef()
@@ -211,7 +214,7 @@ function App() {
 
   const startEdit = (c) => {
     setEditContact(c)
-    setEditForm({ name: c.name, type: c.type || '', sphere: c.sphere || '', frequency: c.frequency || 'Периодически', potential: c.potential || 'Средний', notes: c.notes || '', gives: c.gives || '', needs: c.needs || '', tags: c.tags || [], status: c.status || 'Не задан' })
+    setEditForm({ name: c.name, type: c.type || '', sphere: c.sphere || '', frequency: c.frequency || 'Периодически', potential: c.potential || 'Средний', notes: c.notes || '', gives: c.gives || '', needs: c.needs || '', tags: c.tags || [], status: c.status || 'Не задан', reminder_date: c.reminder_date || '' })
   }
 
   const getContactRels = (id) => {
@@ -265,6 +268,9 @@ function App() {
     else { navigator.clipboard.writeText(text); alert('Скопировано') }
   }
 
+  const today = new Date().toISOString().split('T')[0]
+  const reminders = contacts.filter(c => c.reminder_date && c.reminder_date <= today).sort((a, b) => a.reminder_date.localeCompare(b.reminder_date))
+
   const allTags = [...new Set(contacts.flatMap(c => c.tags || []))].sort()
   const filteredContacts = contacts
     .filter(c => filterPotential === 'Все' || c.potential === filterPotential)
@@ -272,152 +278,195 @@ function App() {
     .filter(c => !filterTag || (c.tags || []).includes(filterTag))
     .filter(c => { const q = search.toLowerCase(); return !q || c.name?.toLowerCase().includes(q) || c.sphere?.toLowerCase().includes(q) || c.type?.toLowerCase().includes(q) })
 
+  const tabStyle = (tab) => ({
+    flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+    background: activeTab === tab ? '#111' : '#f5f5f5', color: activeTab === tab ? '#fff' : '#666',
+    borderRadius: 8
+  })
+
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '20px 16px', fontFamily: '-apple-system, sans-serif' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>🧠 ProblemSolver</h1>
-      <p style={{ color: '#666', marginBottom: 20, fontSize: 14 }}>{contacts.length} контактов · {relationships.length} связей</p>
+      <p style={{ color: '#666', marginBottom: 16, fontSize: 14 }}>{contacts.length} контактов · {relationships.length} связей{reminders.length > 0 ? ` · 🔔 ${reminders.length} напоминаний` : ''}</p>
 
-      <textarea value={problem} onChange={e => setProblem(e.target.value)}
-        placeholder="Например: Нужен инвестор для IT стартапа в Казахстане"
-        style={{ width: '100%', height: 110, padding: 12, fontSize: 15, border: '1.5px solid #ddd', borderRadius: 10, resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+        <button style={tabStyle('analyze')} onClick={() => setActiveTab('analyze')}>🔍 Анализ</button>
+        <button style={tabStyle('contacts')} onClick={() => setActiveTab('contacts')}>👥 Контакты</button>
+        <button style={tabStyle('reminders')} onClick={() => setActiveTab('reminders')}>🔔 Напоминания {reminders.length > 0 ? `(${reminders.length})` : ''}</button>
+      </div>
 
-      <button onClick={analyze} disabled={loading || !problem.trim()}
-        style={{ width: '100%', padding: 14, fontSize: 16, fontWeight: 600, background: loading ? '#999' : '#111', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', marginTop: 10 }}>
-        {loading ? '⏳ Анализирую...' : '🔍 Найти нужных людей'}
-      </button>
-
-      {result && (
-        <div style={{ marginTop: 20, padding: 16, background: '#f8f8f8', borderRadius: 10 }}>
-          <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>{result}</div>
-          <button onClick={share} style={{ marginTop: 12, padding: '8px 16px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>📤 Поделиться</button>
+      {activeTab === 'analyze' && (
+        <div>
+          <textarea value={problem} onChange={e => setProblem(e.target.value)}
+            placeholder="Например: Нужен инвестор для IT стартапа в Казахстане"
+            style={{ width: '100%', height: 110, padding: 12, fontSize: 15, border: '1.5px solid #ddd', borderRadius: 10, resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+          <button onClick={analyze} disabled={loading || !problem.trim()}
+            style={{ width: '100%', padding: 14, fontSize: 16, fontWeight: 600, background: loading ? '#999' : '#111', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', marginTop: 10 }}>
+            {loading ? '⏳ Анализирую...' : '🔍 Найти нужных людей'}
+          </button>
+          {result && (
+            <div style={{ marginTop: 20, padding: 16, background: '#f8f8f8', borderRadius: 10 }}>
+              <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.6 }}>{result}</div>
+              <button onClick={share} style={{ marginTop: 12, padding: '8px 16px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>📤 Поделиться</button>
+            </div>
+          )}
         </div>
       )}
 
-      <div style={{ marginTop: 30 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontSize: 13, color: '#999' }}>Контакты ({filteredContacts.length})</span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => fileRef.current.click()} disabled={importing}
-              style={{ padding: '6px 14px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>
-              {importing ? '⏳' : '📥'} Импорт
-            </button>
-            <button onClick={() => setShowForm(!showForm)}
-              style={{ padding: '6px 14px', fontSize: 13, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
-              + Добавить
-            </button>
+      {activeTab === 'reminders' && (
+        <div>
+          {reminders.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#999', padding: 40, fontSize: 14 }}>Нет активных напоминаний</div>
+          ) : (
+            reminders.map(c => (
+              <div key={c.id} style={{ padding: '12px 14px', marginBottom: 8, border: `1px solid ${c.reminder_date < today ? '#ef4444' : '#f59e0b'}`, borderRadius: 8, fontSize: 13 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong>{c.name}</strong>
+                  <span style={{ fontSize: 12, color: c.reminder_date < today ? '#ef4444' : '#f59e0b' }}>
+                    {c.reminder_date < today ? '⚠️ Просрочено' : '📅'} {c.reminder_date}
+                  </span>
+                </div>
+                <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  {STATUSES.map(s => (
+                    <span key={s} onClick={() => updateStatus(c.id, s)}
+                      style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, cursor: 'pointer', background: c.status === s ? statusColor[s] : '#f0f0f0', color: c.status === s ? '#fff' : '#888' }}>
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {activeTab === 'contacts' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: '#999' }}>Контакты ({filteredContacts.length})</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => fileRef.current.click()} disabled={importing}
+                style={{ padding: '6px 14px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>
+                {importing ? '⏳' : '📥'} Импорт
+              </button>
+              <button onClick={() => setShowForm(!showForm)}
+                style={{ padding: '6px 14px', fontSize: 13, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                + Добавить
+              </button>
+            </div>
           </div>
-        </div>
 
-        <input ref={fileRef} type="file" accept=".vcf" onChange={handleVcf} style={{ display: 'none' }} />
+          <input ref={fileRef} type="file" accept=".vcf" onChange={handleVcf} style={{ display: 'none' }} />
 
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="🔎 Поиск по имени, компании, сфере..."
-          style={{ width: '100%', padding: '9px 12px', fontSize: 14, border: '1px solid #ddd', borderRadius: 8, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="🔎 Поиск по имени, компании, сфере..."
+            style={{ width: '100%', padding: '9px 12px', fontSize: 14, border: '1px solid #ddd', borderRadius: 8, boxSizing: 'border-box', marginBottom: 10, fontFamily: 'inherit' }} />
 
-        <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-          {['Все', 'Высокий', 'Средний', 'Низкий'].map(p => (
-            <button key={p} onClick={() => setFilterPotential(p)}
-              style={{ padding: '5px 12px', fontSize: 12, borderRadius: 20, border: '1px solid #ddd', cursor: 'pointer', background: filterPotential === p ? '#111' : '#fff', color: filterPotential === p ? '#fff' : '#333' }}>
-              {p}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-          {['Все', ...STATUSES].map(s => (
-            <button key={s} onClick={() => setFilterStatus(s)}
-              style={{ padding: '5px 12px', fontSize: 12, borderRadius: 20, border: '1px solid #ddd', cursor: 'pointer', background: filterStatus === s ? '#111' : '#fff', color: filterStatus === s ? '#fff' : '#333' }}>
-              {s}
-            </button>
-          ))}
-        </div>
-
-        {allTags.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-            <span onClick={() => setFilterTag('')} style={{ padding: '4px 10px', fontSize: 11, borderRadius: 12, cursor: 'pointer', background: !filterTag ? '#111' : '#f0f0f0', color: !filterTag ? '#fff' : '#555' }}>Все тэги</span>
-            {allTags.map(t => (
-              <span key={t} onClick={() => setFilterTag(t === filterTag ? '' : t)}
-                style={{ padding: '4px 10px', fontSize: 11, borderRadius: 12, cursor: 'pointer', background: filterTag === t ? '#111' : '#f0f0f0', color: filterTag === t ? '#fff' : '#555' }}>
-                {t}
-              </span>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+            {['Все', 'Высокий', 'Средний', 'Низкий'].map(p => (
+              <button key={p} onClick={() => setFilterPotential(p)}
+                style={{ padding: '5px 12px', fontSize: 12, borderRadius: 20, border: '1px solid #ddd', cursor: 'pointer', background: filterPotential === p ? '#111' : '#fff', color: filterPotential === p ? '#fff' : '#333' }}>
+                {p}
+              </button>
             ))}
           </div>
-        )}
 
-        {showForm && <ContactForm form={form} setForm={setForm} onSave={addContact} onCancel={() => setShowForm(false)} title="Новый контакт" />}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+            {['Все', ...STATUSES].map(s => (
+              <button key={s} onClick={() => setFilterStatus(s)}
+                style={{ padding: '5px 12px', fontSize: 12, borderRadius: 20, border: '1px solid #ddd', cursor: 'pointer', background: filterStatus === s ? '#111' : '#fff', color: filterStatus === s ? '#fff' : '#333' }}>
+                {s}
+              </button>
+            ))}
+          </div>
 
-        {filteredContacts.map(c => {
-          const rels = getContactRels(c.id)
-          const isExpanded = expandedContact === c.id
-          return (
-            <div key={c.id}>
-              {editContact?.id === c.id ? (
-                <ContactForm form={editForm} setForm={setEditForm} onSave={saveEdit} onCancel={() => setEditContact(null)} title="Редактировать контакт" />
-              ) : (
-                <div style={{ marginBottom: 8, border: '1px solid #eee', borderRadius: 8, fontSize: 13, overflow: 'hidden' }}>
-                  <div style={{ padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <strong style={{ cursor: 'pointer' }} onClick={() => setExpandedContact(isExpanded ? null : c.id)}>{c.name}</strong>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                        <span style={{ color: potentialColor[c.potential], fontSize: 12 }}>● {c.potential}</span>
-                        <span onClick={() => setShowRelForm(showRelForm === c.id ? null : c.id)} style={{ cursor: 'pointer', fontSize: 13 }}>🔗</span>
-                        <span onClick={() => startEdit(c)} style={{ cursor: 'pointer', color: '#aaa', fontSize: 13 }}>✏️</span>
-                        <span onClick={() => deleteContact(c.id)} style={{ cursor: 'pointer', color: '#ccc', fontSize: 16 }}>×</span>
+          {allTags.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+              <span onClick={() => setFilterTag('')} style={{ padding: '4px 10px', fontSize: 11, borderRadius: 12, cursor: 'pointer', background: !filterTag ? '#111' : '#f0f0f0', color: !filterTag ? '#fff' : '#555' }}>Все тэги</span>
+              {allTags.map(t => (
+                <span key={t} onClick={() => setFilterTag(t === filterTag ? '' : t)}
+                  style={{ padding: '4px 10px', fontSize: 11, borderRadius: 12, cursor: 'pointer', background: filterTag === t ? '#111' : '#f0f0f0', color: filterTag === t ? '#fff' : '#555' }}>
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {showForm && <ContactForm form={form} setForm={setForm} onSave={addContact} onCancel={() => setShowForm(false)} title="Новый контакт" />}
+
+          {filteredContacts.map(c => {
+            const rels = getContactRels(c.id)
+            const isExpanded = expandedContact === c.id
+            return (
+              <div key={c.id}>
+                {editContact?.id === c.id ? (
+                  <ContactForm form={editForm} setForm={setEditForm} onSave={saveEdit} onCancel={() => setEditContact(null)} title="Редактировать контакт" />
+                ) : (
+                  <div style={{ marginBottom: 8, border: '1px solid #eee', borderRadius: 8, fontSize: 13, overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <strong style={{ cursor: 'pointer' }} onClick={() => setExpandedContact(isExpanded ? null : c.id)}>{c.name}</strong>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                          <span style={{ color: potentialColor[c.potential], fontSize: 12 }}>● {c.potential}</span>
+                          {c.reminder_date && <span title={`Напоминание: ${c.reminder_date}`}>🔔</span>}
+                          <span onClick={() => setShowRelForm(showRelForm === c.id ? null : c.id)} style={{ cursor: 'pointer', fontSize: 13 }}>🔗</span>
+                          <span onClick={() => startEdit(c)} style={{ cursor: 'pointer', color: '#aaa', fontSize: 13 }}>✏️</span>
+                          <span onClick={() => deleteContact(c.id)} style={{ cursor: 'pointer', color: '#ccc', fontSize: 16 }}>×</span>
+                        </div>
                       </div>
+                      <div style={{ color: '#555', marginTop: 2 }}>{c.type} · {c.frequency}</div>
+                      <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
+                      <div style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {STATUSES.map(s => (
+                          <span key={s} onClick={() => updateStatus(c.id, s)}
+                            style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, cursor: 'pointer', background: c.status === s ? statusColor[s] : '#f0f0f0', color: c.status === s ? '#fff' : '#888' }}>
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                      {c.tags?.length > 0 && (
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                          {c.tags.map(t => <span key={t} style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, background: '#f0f0f0', color: '#555' }}>{t}</span>)}
+                        </div>
+                      )}
+                      {rels.length > 0 && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: '#888' }}>🔗 {rels.map(r => r.other.name).join(', ')}</div>
+                      )}
                     </div>
-                    <div style={{ color: '#555', marginTop: 2 }}>{c.type} · {c.frequency}</div>
-                    <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
 
-                    <div style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {STATUSES.map(s => (
-                        <span key={s} onClick={() => updateStatus(c.id, s)}
-                          style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, cursor: 'pointer', background: c.status === s ? statusColor[s] : '#f0f0f0', color: c.status === s ? '#fff' : '#888' }}>
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-
-                    {c.tags?.length > 0 && (
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
-                        {c.tags.map(t => <span key={t} style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, background: '#f0f0f0', color: '#555' }}>{t}</span>)}
+                    {isExpanded && rels.length > 0 && (
+                      <div style={{ borderTop: '1px solid #f0f0f0', padding: '8px 12px', background: '#fafafa' }}>
+                        <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Связи:</div>
+                        {rels.map(r => (
+                          <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f0f0f0' }}>
+                            <div>
+                              <span style={{ fontWeight: 600 }}>{r.other.name}</span>
+                              <span style={{ color: '#888', marginLeft: 6 }}>{'★'.repeat(r.strength)}{'☆'.repeat(5 - r.strength)}</span>
+                              {r.notes && <span style={{ color: '#999', marginLeft: 6 }}>{r.notes}</span>}
+                            </div>
+                            <span onClick={() => deleteRelationship(r.id)} style={{ cursor: 'pointer', color: '#ccc' }}>×</span>
+                          </div>
+                        ))}
                       </div>
                     )}
-                    {rels.length > 0 && (
-                      <div style={{ marginTop: 6, fontSize: 12, color: '#888' }}>🔗 {rels.map(r => r.other.name).join(', ')}</div>
+
+                    {showRelForm === c.id && (
+                      <div style={{ padding: '0 12px 12px' }}>
+                        <RelationshipForm contactId={c.id} contacts={contacts} onSave={loadRelationships} onClose={() => setShowRelForm(null)} />
+                      </div>
                     )}
                   </div>
+                )}
+              </div>
+            )
+          })}
 
-                  {isExpanded && rels.length > 0 && (
-                    <div style={{ borderTop: '1px solid #f0f0f0', padding: '8px 12px', background: '#fafafa' }}>
-                      <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Связи:</div>
-                      {rels.map(r => (
-                        <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f0f0f0' }}>
-                          <div>
-                            <span style={{ fontWeight: 600 }}>{r.other.name}</span>
-                            <span style={{ color: '#888', marginLeft: 6 }}>{'★'.repeat(r.strength)}{'☆'.repeat(5 - r.strength)}</span>
-                            {r.notes && <span style={{ color: '#999', marginLeft: 6 }}>{r.notes}</span>}
-                          </div>
-                          <span onClick={() => deleteRelationship(r.id)} style={{ cursor: 'pointer', color: '#ccc' }}>×</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {showRelForm === c.id && (
-                    <div style={{ padding: '0 12px 12px' }}>
-                      <RelationshipForm contactId={c.id} contacts={contacts} onSave={loadRelationships} onClose={() => setShowRelForm(null)} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )
-        })}
-
-        {filteredContacts.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#999', padding: 20, fontSize: 14 }}>Ничего не найдено</div>
-        )}
-      </div>
+          {filteredContacts.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#999', padding: 20, fontSize: 14 }}>Ничего не найдено</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
