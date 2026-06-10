@@ -145,6 +145,8 @@ function App() {
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [tagging, setTagging] = useState(false)
+  const [tagProgress, setTagProgress] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editContact, setEditContact] = useState(null)
   const [showRelForm, setShowRelForm] = useState(null)
@@ -183,6 +185,40 @@ function App() {
     setImporting(false)
     alert(`Импортировано ${parsed.length} контактов!`)
     e.target.value = ''
+  }
+
+  const autoTag = async () => {
+    const toTag = contacts.filter(c => (!c.tags || c.tags.length === 0) && c.sphere)
+    if (toTag.length === 0) { alert('Нет контактов без тэгов (или без сферы)'); return }
+    setTagging(true)
+    const batchSize = 50
+    let tagged = 0
+    for (let i = 0; i < toTag.length; i += batchSize) {
+      const batch = toTag.slice(i, i + batchSize)
+      setTagProgress(`Обрабатываю ${i + 1}–${Math.min(i + batchSize, toTag.length)} из ${toTag.length}...`)
+      const list = batch.map(c => `${c.id}|${c.name}|${c.sphere}`).join('\n')
+      const prompt = `Для каждого контакта из списка назначь 1-3 тэга из набора: IT, Финансы, Строительство, Госсектор, Медиа, Недвижимость, Логистика, Авто, Инвестор, Юрист, Госсвязи, Производство, Торговля, Образование, Медицина, Спорт, Ресторан, Туризм.\n\nФормат ответа ТОЛЬКО JSON массив: [{"id":"uuid","tags":["тэг1","тэг2"]}]\n\nКонтакты:\n${list}`
+      try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}` },
+          body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], max_tokens: 2000 })
+        })
+        const data = await response.json()
+        const text = data.choices[0].message.content.replace(/```json|```/g, '').trim()
+        const results = JSON.parse(text)
+        for (const r of results) {
+          if (r.tags && r.tags.length > 0) {
+            await supabase.from('contacts').update({ tags: r.tags }).eq('id', r.id)
+            tagged++
+          }
+        }
+      } catch (err) { console.error('Batch error:', err) }
+    }
+    await loadContacts()
+    setTagging(false)
+    setTagProgress('')
+    alert(`Готово! Тэги проставлены для ${tagged} контактов.`)
   }
 
   const addContact = async () => {
@@ -270,7 +306,6 @@ function App() {
 
   const today = new Date().toISOString().split('T')[0]
   const reminders = contacts.filter(c => c.reminder_date && c.reminder_date <= today).sort((a, b) => a.reminder_date.localeCompare(b.reminder_date))
-
   const allTags = [...new Set(contacts.flatMap(c => c.tags || []))].sort()
   const filteredContacts = contacts
     .filter(c => filterPotential === 'Все' || c.potential === filterPotential)
@@ -280,19 +315,18 @@ function App() {
 
   const tabStyle = (tab) => ({
     flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
-    background: activeTab === tab ? '#111' : '#f5f5f5', color: activeTab === tab ? '#fff' : '#666',
-    borderRadius: 8
+    background: activeTab === tab ? '#111' : '#f5f5f5', color: activeTab === tab ? '#fff' : '#666', borderRadius: 8
   })
 
   return (
     <div style={{ maxWidth: 640, margin: '0 auto', padding: '20px 16px', fontFamily: '-apple-system, sans-serif' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>🧠 ProblemSolver</h1>
-      <p style={{ color: '#666', marginBottom: 16, fontSize: 14 }}>{contacts.length} контактов · {relationships.length} связей{reminders.length > 0 ? ` · 🔔 ${reminders.length} напоминаний` : ''}</p>
+      <p style={{ color: '#666', marginBottom: 16, fontSize: 14 }}>{contacts.length} контактов · {relationships.length} связей{reminders.length > 0 ? ` · 🔔 ${reminders.length}` : ''}</p>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
         <button style={tabStyle('analyze')} onClick={() => setActiveTab('analyze')}>🔍 Анализ</button>
         <button style={tabStyle('contacts')} onClick={() => setActiveTab('contacts')}>👥 Контакты</button>
-        <button style={tabStyle('reminders')} onClick={() => setActiveTab('reminders')}>🔔 Напоминания {reminders.length > 0 ? `(${reminders.length})` : ''}</button>
+        <button style={tabStyle('reminders')} onClick={() => setActiveTab('reminders')}>🔔 {reminders.length > 0 ? `(${reminders.length})` : 'Напоминания'}</button>
       </div>
 
       {activeTab === 'analyze' && (
@@ -317,27 +351,25 @@ function App() {
         <div>
           {reminders.length === 0 ? (
             <div style={{ textAlign: 'center', color: '#999', padding: 40, fontSize: 14 }}>Нет активных напоминаний</div>
-          ) : (
-            reminders.map(c => (
-              <div key={c.id} style={{ padding: '12px 14px', marginBottom: 8, border: `1px solid ${c.reminder_date < today ? '#ef4444' : '#f59e0b'}`, borderRadius: 8, fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <strong>{c.name}</strong>
-                  <span style={{ fontSize: 12, color: c.reminder_date < today ? '#ef4444' : '#f59e0b' }}>
-                    {c.reminder_date < today ? '⚠️ Просрочено' : '📅'} {c.reminder_date}
-                  </span>
-                </div>
-                <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
-                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                  {STATUSES.map(s => (
-                    <span key={s} onClick={() => updateStatus(c.id, s)}
-                      style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, cursor: 'pointer', background: c.status === s ? statusColor[s] : '#f0f0f0', color: c.status === s ? '#fff' : '#888' }}>
-                      {s}
-                    </span>
-                  ))}
-                </div>
+          ) : reminders.map(c => (
+            <div key={c.id} style={{ padding: '12px 14px', marginBottom: 8, border: `1px solid ${c.reminder_date < today ? '#ef4444' : '#f59e0b'}`, borderRadius: 8, fontSize: 13 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>{c.name}</strong>
+                <span style={{ fontSize: 12, color: c.reminder_date < today ? '#ef4444' : '#f59e0b' }}>
+                  {c.reminder_date < today ? '⚠️ Просрочено' : '📅'} {c.reminder_date}
+                </span>
               </div>
-            ))
-          )}
+              <div style={{ color: '#777', marginTop: 4 }}>{c.sphere}</div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                {STATUSES.map(s => (
+                  <span key={s} onClick={() => updateStatus(c.id, s)}
+                    style={{ padding: '2px 8px', fontSize: 11, borderRadius: 10, cursor: 'pointer', background: c.status === s ? statusColor[s] : '#f0f0f0', color: c.status === s ? '#fff' : '#888' }}>
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -345,10 +377,14 @@ function App() {
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span style={{ fontSize: 13, color: '#999' }}>Контакты ({filteredContacts.length})</span>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={autoTag} disabled={tagging}
+                style={{ padding: '6px 12px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>
+                {tagging ? '⏳' : '🤖'} AI тэги
+              </button>
               <button onClick={() => fileRef.current.click()} disabled={importing}
-                style={{ padding: '6px 14px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>
-                {importing ? '⏳' : '📥'} Импорт
+                style={{ padding: '6px 12px', fontSize: 13, background: '#fff', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>
+                {importing ? '⏳' : '📥'}
               </button>
               <button onClick={() => setShowForm(!showForm)}
                 style={{ padding: '6px 14px', fontSize: 13, background: '#111', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
@@ -356,6 +392,12 @@ function App() {
               </button>
             </div>
           </div>
+
+          {tagging && tagProgress && (
+            <div style={{ padding: '10px 12px', background: '#f0f9ff', borderRadius: 8, fontSize: 13, color: '#0369a1', marginBottom: 10 }}>
+              🤖 {tagProgress}
+            </div>
+          )}
 
           <input ref={fileRef} type="file" accept=".vcf" onChange={handleVcf} style={{ display: 'none' }} />
 
@@ -434,7 +476,6 @@ function App() {
                         <div style={{ marginTop: 6, fontSize: 12, color: '#888' }}>🔗 {rels.map(r => r.other.name).join(', ')}</div>
                       )}
                     </div>
-
                     {isExpanded && rels.length > 0 && (
                       <div style={{ borderTop: '1px solid #f0f0f0', padding: '8px 12px', background: '#fafafa' }}>
                         <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>Связи:</div>
@@ -450,7 +491,6 @@ function App() {
                         ))}
                       </div>
                     )}
-
                     {showRelForm === c.id && (
                       <div style={{ padding: '0 12px 12px' }}>
                         <RelationshipForm contactId={c.id} contacts={contacts} onSave={loadRelationships} onClose={() => setShowRelForm(null)} />
